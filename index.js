@@ -7,7 +7,7 @@ const port = process.env.PORT || 3000;
 const app = express();
 
 // middleware
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 
@@ -15,7 +15,7 @@ app.use(cookieParser());
 const user = process.env.DB_USER;
 const password = process.env.DB_PASSWORD;
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${user}:${password}@cluster0.q4a9c.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -85,10 +85,71 @@ async function run() {
       );
       res.send(result);
     });
+    app.get("donation-requests", async (req, res) => {
+      const email = req.query.email;
+      if (!email) {
+        return res.status(400).send("Email is required");
+      }
+      const query = { email: email };
+      const donationRequests = await donationsRequestCollection
+        .find(query)
+        .toArray();
+      res.send(donationRequests);
+    });
+    app.get("/donation-requests/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const donationRequest = await donationsRequestCollection.findOne(query);
+      res.send(donationRequest);
+    });
+
+    // Update donation request
+    app.patch("/donation-requests/:id", async (req, res) => {
+      const id = req.params.id;
+      const updatedRequest = req.body;
+
+      const query = { _id: new ObjectId(id) };
+      const options = { upsert: false };
+
+      const updateDoc = {
+        $set: {
+          name: updatedRequest.name,
+          recipient_name: updatedRequest.recipient_name,
+          hospital_name: updatedRequest.hospital_name,
+          phone: updatedRequest.phone,
+          bloodGroup: updatedRequest.bloodGroup,
+          district: updatedRequest.district,
+          donation_date: updatedRequest.donation_date,
+          donation_time: updatedRequest.donation_time,
+          full_address: updatedRequest.full_address,
+          request_message: updatedRequest.request_message,
+        },
+      };
+
+      try {
+        const result = await donationsRequestCollection.updateOne(
+          query,
+          updateDoc,
+          options
+        );
+        res.send(result);
+      } catch (error) {
+        console.error("Failed to update donation request:", error);
+        res.status(500).send({ error: "Update failed" });
+      }
+    });
+
+    // Delete donation request
+    app.delete("/donation-requests/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await donationsRequestCollection.deleteOne(query);
+      res.send(result);
+    });
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
