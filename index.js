@@ -18,7 +18,6 @@ const password = process.env.DB_PASSWORD;
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${user}:${password}@cluster0.q4a9c.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -29,7 +28,6 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    // Collections
     const usersCollection = client
       .db("bloodBond")
       .collection("user_collection");
@@ -40,8 +38,7 @@ async function run() {
       .db("bloodBond")
       .collection("donation_request");
 
-    // !ROUTES
-    //TODO: user routes
+    // User routes
     app.get("/users", async (req, res) => {
       const users = await usersCollection.find().toArray();
       res.send(users);
@@ -59,7 +56,7 @@ async function run() {
       res.send(result);
     });
 
-    // TODO: volunteer routes
+    // Volunteer routes
     app.get("/volunteers", async (req, res) => {
       const volunteers = await volunteersCollection.find().toArray();
       res.send(volunteers);
@@ -71,13 +68,39 @@ async function run() {
       res.send(result);
     });
 
-    // TODO: donation request routes
+    // Unified donation-requests GET route with optional email filter and pagination
     app.get("/donation-requests", async (req, res) => {
-      const donationRequests = await donationsRequestCollection
-        .find()
-        .toArray();
-      res.send(donationRequests);
+      try {
+        const email = req.query.email;
+        const limit = parseInt(req.query.limit) || 0;
+        const page = parseInt(req.query.page) || 1;
+        const size = parseInt(req.query.size) || 10;
+
+        const filter = email ? { email } : {};
+        const skip = (page - 1) * size;
+
+        const count = await donationsRequestCollection.countDocuments(filter);
+
+        let query = donationsRequestCollection.find(filter);
+
+        if (limit > 0) {
+          query = query.limit(limit);
+        } else {
+          query = query.skip(skip).limit(size);
+        }
+
+        const donationRequests = await query.toArray();
+
+        res.send({
+          data: donationRequests,
+          count,
+        });
+      } catch (error) {
+        console.error("Error fetching donation requests:", error);
+        res.status(500).send({ error: "Failed to fetch donation requests" });
+      }
     });
+
     app.post("/donation-requests", async (req, res) => {
       const newDonationRequest = req.body;
       const result = await donationsRequestCollection.insertOne(
@@ -85,17 +108,7 @@ async function run() {
       );
       res.send(result);
     });
-    app.get("donation-requests", async (req, res) => {
-      const email = req.query.email;
-      if (!email) {
-        return res.status(400).send("Email is required");
-      }
-      const query = { email: email };
-      const donationRequests = await donationsRequestCollection
-        .find(query)
-        .toArray();
-      res.send(donationRequests);
-    });
+
     app.get("/donation-requests/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -103,14 +116,11 @@ async function run() {
       res.send(donationRequest);
     });
 
-    // Update donation request
     app.patch("/donation-requests/:id", async (req, res) => {
       const id = req.params.id;
       const updatedRequest = req.body;
-
       const query = { _id: new ObjectId(id) };
       const options = { upsert: false };
-
       const updateDoc = {
         $set: {
           name: updatedRequest.name,
@@ -139,25 +149,21 @@ async function run() {
       }
     });
 
-    // Delete donation request
     app.delete("/donation-requests/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await donationsRequestCollection.deleteOne(query);
       res.send(result);
     });
-    // Connect the client to the server	(optional starting in v4.7)
-    // await client.connect();
-    // Send a ping to confirm a successful connection
-    // await client.db("admin").command({ ping: 1 });
+
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
   } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+    // Do not close client here for persistent connection
   }
 }
+
 run().catch(console.dir);
 
 app.get("/", async (req, res) => {
