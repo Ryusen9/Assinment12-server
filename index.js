@@ -37,7 +37,9 @@ async function run() {
     const donationsRequestCollection = client
       .db("bloodBond")
       .collection("donation_request");
-
+    const donationsCollection = client
+      .db("bloodBond")
+      .collection("donation_collection");
     // User routes
     app.get("/users", async (req, res) => {
       const users = await usersCollection.find().toArray();
@@ -48,6 +50,18 @@ async function run() {
       const email = req.params.email;
       const user = await usersCollection.findOne({ email: email });
       res.send(user);
+    });
+
+    app.patch("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const updatedUser = req.body;
+
+      const result = await usersCollection.updateOne(
+        { email: email },
+        { $set: updatedUser }
+      );
+
+      res.send(result);
     });
 
     app.post("/users", async (req, res) => {
@@ -68,17 +82,78 @@ async function run() {
       res.send(result);
     });
 
-    // Unified donation-requests GET route with optional email filter and pagination
+    app.get("/volunteers/:email", async (req, res) => {
+      const email = req.params.email;
+      const volunteer = await volunteersCollection.findOne({ email });
+      res.send(volunteer);
+    });
+
+    app.patch("/volunteers/:email", async (req, res) => {
+      const email = req.params.email;
+      const updatedData = req.body;
+
+      try {
+        const filter = { email: email };
+        const updateDoc = {
+          $set: {
+            name: updatedData.name,
+            age: updatedData.age,
+            bloodGroup: updatedData.bloodGroup,
+            profession: updatedData.profession,
+            contact: updatedData.contact,
+            address: updatedData.address,
+            gender: updatedData.gender,
+            photo: updatedData.photo,
+          },
+        };
+
+        const result = await volunteersCollection.updateOne(filter, updateDoc);
+        res.send(result);
+      } catch (error) {
+        console.error("Error updating volunteer:", error);
+        res.status(500).send({ error: "Internal Server Error" });
+      }
+    });
+
+    app.get("/volunteers-donations", async (req, res) => {
+      const volunteerEmail = req.query.volunteerEmail;
+      const query = volunteerEmail ? { volunteer_email: volunteerEmail } : {};
+      const donations = await donationsCollection.find(query).toArray();
+      res.send(donations);
+    });
+
+    app.post("/volunteers-donations", async (req, res) => {
+      const newDonation = req.body;
+      if (!newDonation || typeof newDonation !== "object") {
+        return res.status(400).send({ error: "Invalid donation data" });
+      }
+
+      try {
+        const result = await donationsCollection.insertOne(newDonation);
+        res.send(result);
+      } catch (error) {
+        console.error("Insert failed:", error);
+        res.status(500).send({ error: "Insert failed" });
+      }
+    });
+
     app.get("/donation-requests", async (req, res) => {
       try {
         const email = req.query.email;
-        const limit = parseInt(req.query.limit) || 0;
+        const limit = parseInt(req.query.limit);
         const page = parseInt(req.query.page) || 1;
         const size = parseInt(req.query.size) || 10;
+        const sortOrder = req.query.sortOrder === "newest" ? -1 : 1;
+        const bloodGroup = req.query.bloodGroup;
 
-        const filter = email ? { email } : {};
+        const filter = {};
+        if (email) filter.email = email;
+
+        if (bloodGroup) {
+          filter.bloodGroup = { $regex: `^${bloodGroup}$`, $options: "i" };
+        }
+
         const skip = (page - 1) * size;
-
         const count = await donationsRequestCollection.countDocuments(filter);
 
         let query = donationsRequestCollection.find(filter);
@@ -89,7 +164,9 @@ async function run() {
           query = query.skip(skip).limit(size);
         }
 
-        const donationRequests = await query.toArray();
+        const donationRequests = await query
+          .sort({ createdAt: sortOrder }) // You must have a createdAt field
+          .toArray();
 
         res.send({
           data: donationRequests,
