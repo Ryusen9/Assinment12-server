@@ -46,13 +46,19 @@ async function run() {
       res.send(users);
     });
 
-    app.get("/users/:email", async (req, res) => {
+    app.get("/users/:id", async (req, res) => {
+      const id = req.params.id;
+      const user = await usersCollection.findOne({ _id: new ObjectId(id) });
+      res.send(user);
+    });
+
+    app.get("/users-by-email/:email", async (req, res) => {
       const email = req.params.email;
       const user = await usersCollection.findOne({ email: email });
       res.send(user);
     });
 
-    app.patch("/users/:email", async (req, res) => {
+    app.patch("/users-by-email/:email", async (req, res) => {
       const email = req.params.email;
       const updatedUser = req.body;
 
@@ -67,6 +73,18 @@ async function run() {
     app.post("/users", async (req, res) => {
       const newUser = req.body;
       const result = await usersCollection.insertOne(newUser);
+      res.send(result);
+    });
+
+    app.patch("/users/:id", async (req, res) => {
+      const id = req.params.id;
+      const { role } = req.body;
+
+      const result = await usersCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { role } }
+      );
+
       res.send(result);
     });
 
