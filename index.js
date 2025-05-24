@@ -7,9 +7,29 @@ const port = process.env.PORT || 3000;
 const app = express();
 
 // middleware
-app.use(cors({ origin: true, credentials: true }));
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://localhost:5175"],
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(cookieParser());
+
+// !cookie verification
+const verifyToken = (req, res, next) => {
+  const token = req?.cookies?.token;
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized access" });
+  }
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ message: "Unauthorized access" });
+    }
+    req.user = decoded;
+    next();
+  });
+};
 
 // mongoDB connection
 const user = process.env.DB_USER;
@@ -40,25 +60,49 @@ async function run() {
     const donationsCollection = client
       .db("bloodBond")
       .collection("donation_collection");
+
+    // JWT Token setup
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.JWT_SECRET, {
+        expiresIn: "10h",
+      });
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV,
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+        .send({ success: true });
+    });
+    app.post("/logout", (req, res) => {
+      res
+        .clearCookie("token", {
+          httpOnly: true,
+          secure: process.env.NODE_ENV,
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+        .send({ success: true });
+    });
     // User routes
     app.get("/users", async (req, res) => {
       const users = await usersCollection.find().toArray();
       res.send(users);
     });
 
-    app.get("/users/:id", async (req, res) => {
+    app.get("/users/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const user = await usersCollection.findOne({ _id: new ObjectId(id) });
       res.send(user);
     });
 
-    app.get("/users-by-email/:email", async (req, res) => {
+    app.get("/users-by-email/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       const user = await usersCollection.findOne({ email: email });
       res.send(user);
     });
 
-    app.patch("/users-by-email/:email", async (req, res) => {
+    app.patch("/users-by-email/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       const updatedUser = req.body;
 
@@ -70,13 +114,13 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/users", async (req, res) => {
+    app.post("/users", verifyToken, async (req, res) => {
       const newUser = req.body;
       const result = await usersCollection.insertOne(newUser);
       res.send(result);
     });
 
-    app.patch("/users/:id", async (req, res) => {
+    app.patch("/users/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const { role } = req.body;
 
@@ -100,13 +144,13 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/volunteers/:email", async (req, res) => {
+    app.get("/volunteers/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       const volunteer = await volunteersCollection.findOne({ email });
       res.send(volunteer);
     });
 
-    app.patch("/volunteers/:email", async (req, res) => {
+    app.patch("/volunteers/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
       const updatedData = req.body;
 
@@ -140,7 +184,7 @@ async function run() {
       res.send(donations);
     });
 
-    app.post("/volunteers-donations", async (req, res) => {
+    app.post("/volunteers-donations", verifyToken, async (req, res) => {
       const newDonation = req.body;
       if (!newDonation || typeof newDonation !== "object") {
         return res.status(400).send({ error: "Invalid donation data" });
@@ -159,8 +203,8 @@ async function run() {
       try {
         const email = req.query.email;
         const limit = parseInt(req.query.limit);
-        const page = parseInt(req.query.page) || 1;
-        const size = parseInt(req.query.size) || 10;
+        const page = parseInt(req.query.page);
+        const size = parseInt(req.query.size);
         const sortOrder = req.query.sortOrder === "newest" ? -1 : 1;
         const bloodGroup = req.query.bloodGroup;
 
@@ -196,7 +240,7 @@ async function run() {
       }
     });
 
-    app.post("/donation-requests", async (req, res) => {
+    app.post("/donation-requests", verifyToken, async (req, res) => {
       const newDonationRequest = req.body;
       const result = await donationsRequestCollection.insertOne(
         newDonationRequest
@@ -204,14 +248,14 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/donation-requests/:id", async (req, res) => {
+    app.get("/donation-requests/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const donationRequest = await donationsRequestCollection.findOne(query);
       res.send(donationRequest);
     });
 
-    app.patch("/donation-requests/:id", async (req, res) => {
+    app.patch("/donation-requests/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const updatedRequest = req.body;
       const query = { _id: new ObjectId(id) };
@@ -228,6 +272,7 @@ async function run() {
           donation_time: updatedRequest.donation_time,
           full_address: updatedRequest.full_address,
           request_message: updatedRequest.request_message,
+          status: updatedRequest.status,
         },
       };
 
@@ -244,7 +289,7 @@ async function run() {
       }
     });
 
-    app.delete("/donation-requests/:id", async (req, res) => {
+    app.delete("/donation-requests/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await donationsRequestCollection.deleteOne(query);
