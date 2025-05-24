@@ -9,7 +9,13 @@ const app = express();
 // middleware
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:5175"],
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:5175",
+      "https://bloodbond-1b6d6.web.app",
+      "https://console.firebase.google.com/project/bloodbond-1b6d6/overview",
+      "https://server-theta-virid.vercel.app",
+    ],
     credentials: true,
   })
 );
@@ -70,7 +76,7 @@ async function run() {
       res
         .cookie("token", token, {
           httpOnly: true,
-          secure: process.env.NODE_ENV,
+          secure: process.env.NODE_ENV === "production",
           sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
         })
         .send({ success: true });
@@ -79,7 +85,7 @@ async function run() {
       res
         .clearCookie("token", {
           httpOnly: true,
-          secure: process.env.NODE_ENV,
+          secure: process.env.NODE_ENV === "production",
           sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
         })
         .send({ success: true });
@@ -90,19 +96,19 @@ async function run() {
       res.send(users);
     });
 
-    app.get("/users/:id", verifyToken, async (req, res) => {
+    app.get("/users/:id", async (req, res) => {
       const id = req.params.id;
       const user = await usersCollection.findOne({ _id: new ObjectId(id) });
       res.send(user);
     });
 
-    app.get("/users-by-email/:email", verifyToken, async (req, res) => {
+    app.get("/users-by-email/:email", async (req, res) => {
       const email = req.params.email;
       const user = await usersCollection.findOne({ email: email });
       res.send(user);
     });
 
-    app.patch("/users-by-email/:email", verifyToken, async (req, res) => {
+    app.patch("/users-by-email/:email", async (req, res) => {
       const email = req.params.email;
       const updatedUser = req.body;
 
@@ -114,13 +120,13 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/users", verifyToken, async (req, res) => {
+    app.post("/users", async (req, res) => {
       const newUser = req.body;
       const result = await usersCollection.insertOne(newUser);
       res.send(result);
     });
 
-    app.patch("/users/:id", verifyToken, async (req, res) => {
+    app.patch("/users/:id", async (req, res) => {
       const id = req.params.id;
       const { role } = req.body;
 
@@ -144,13 +150,13 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/volunteers/:email", verifyToken, async (req, res) => {
+    app.get("/volunteers/:email", async (req, res) => {
       const email = req.params.email;
       const volunteer = await volunteersCollection.findOne({ email });
       res.send(volunteer);
     });
 
-    app.patch("/volunteers/:email", verifyToken, async (req, res) => {
+    app.patch("/volunteers/:email", async (req, res) => {
       const email = req.params.email;
       const updatedData = req.body;
 
@@ -177,7 +183,7 @@ async function run() {
       }
     });
 
-    app.get("/volunteers-donations", async (req, res) => {
+    app.get("/volunteers-donations", verifyToken, async (req, res) => {
       const volunteerEmail = req.query.volunteerEmail;
       const query = volunteerEmail ? { volunteer_email: volunteerEmail } : {};
       const donations = await donationsCollection.find(query).toArray();
@@ -199,7 +205,7 @@ async function run() {
       }
     });
 
-    app.get("/donation-requests", async (req, res) => {
+    app.get("/donation-requests", verifyToken, async (req, res) => {
       try {
         const email = req.query.email;
         const limit = parseInt(req.query.limit);
